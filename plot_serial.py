@@ -1,107 +1,121 @@
 import serial
-import matplotlib.pyplot as plt
-import matplotlib.animation as animation
-import time
+import pyqtgraph as pg
+from pyqtgraph.Qt import QtGui, QtCore, QtWidgets
+import numpy as np
+import sys
 
-# Configure the serial port (update '/dev/ttyACM0' to your device if needed)
+# Serial port setup
 ser = serial.Serial('/dev/ttyACM0', 115200, timeout=1)
 
-# Open a log file in append mode (data.txt in the same directory)
-log_file = open("data.txt", "a")
+# Settings
+window_size = 500
+smoothing_window = 100
+sample_interval = 0.02  # 20 ms = 50 Hz
 
-# Data lists for each of the four channels
-data1, data2, data3, data4 = [], [], [], []
-# Buffer to accumulate tokens if lines are incomplete
-token_buffer = []
+# Data buffer
+data = np.zeros((3, window_size))
+valid_samples = 0
+current_time = 0.0
 
-def read_serial():
-    """Reads one line from the serial port, logs it, and appends tokens to token_buffer."""
+# Create the app
+app = QtWidgets.QApplication([])
+main_layout = QtWidgets.QWidget()
+layout = QtWidgets.QVBoxLayout()
+main_layout.setLayout(layout)
+
+# Graph widget
+win = pg.GraphicsLayoutWidget(title="Real-Time Sensor Data")
+win.resize(1000, 600)
+
+plots = []
+curves = []
+
+for i in range(2):
+    p = win.addPlot(row=i, col=0)
+    p.showGrid(x=True, y=True)
+    c = p.plot(pen=pg.intColor(i))
+    plots.append(p)
+    curves.append(c)
+
+layout.addWidget(win)
+
+# --- Buttons ---
+button_layout = QtWidgets.QHBoxLayout()
+
+start_button = QtWidgets.QPushButton("Start")
+stop_button = QtWidgets.QPushButton("Stop")
+
+button_layout.addWidget(start_button)
+button_layout.addWidget(stop_button)
+layout.addLayout(button_layout)
+
+# Button handlers
+def send_start():
+    try:
+        ser.write(b"start\r\n")
+        ser.flush()
+        print("Sent: start")
+    except Exception as e:
+        print(e)
+
+def send_stop():
+    try:
+        ser.write(b"stop\n\r")
+        ser.flush()
+        print("Sent: stop")
+    except Exception as e:
+        print(e)
+
+start_button.clicked.connect(send_start)
+stop_button.clicked.connect(send_stop)
+
+# --- Smoothing function ---
+def smooth(data_array, window_size):
+    if len(data_array) < window_size:
+        return data_array
+    return np.convolve(data_array, np.ones(window_size)/window_size, mode='valid')
+
+# --- Timer update ---
+def update():
+    global data, current_time, valid_samples
     try:
         line = ser.readline().decode('utf-8').strip()
-    except Exception as e:
-        print("Error reading from serial:", e)
-        return
-    if line:
-        # Log the line to the file
-        log_file.write(line + "\n")
-        log_file.flush()  # Ensure immediate write
-        # Split the line into tokens and add them to the buffer
         tokens = line.split()
-        global token_buffer
-        token_buffer.extend(tokens)
+        if len(tokens) >= 3:
+            values = np.array([float(x) for x in tokens[1:3]])
 
-def process_tokens():
-    """Processes tokens in groups of 4 and appends them to channel data lists."""
-    global token_buffer
-    while len(token_buffer) >= 4:
-        sample_tokens = token_buffer[:4]
-        del token_buffer[:4]
-        try:
-            values = [float(x) for x in sample_tokens]
-            d1, d2, d3, d4 = values
-            data1.append(d1)
-            data2.append(d2)
-            data3.append(d3)
-            data4.append(d4)
-            # Uncomment below for debugging:
-            # print("Parsed sample:", values)
-        except ValueError:
-            print("Error converting tokens:", sample_tokens)
+            data = np.roll(data, -1, axis=1)
+            data[1:, -1] = values
+            data[0, -1] = current_time
 
-# Create figure and 4 subplots (one per channel)
-fig, axs = plt.subplots(4, 1, sharex=True, figsize=(10, 8))
-axs[0].set_ylabel("Quad phase")
-axs[1].set_ylabel("In phase")
-axs[2].set_ylabel("BioZ")
-axs[3].set_ylabel("Adjusted BioZ")
-axs[3].set_xlabel("Sample Index")
-fig.suptitle("Real-Time Sensor Data (Sliding Window)")
+            current_time += sample_interval
 
-def animate(frame):
-    # Read a few lines from the serial port for faster processing
-    for _ in range(5):
-        read_serial()
-    process_tokens()
-    
-    # Define sliding window size
-    window = 100
-    total_samples = len(data1)
-    
-    if total_samples > window:
-        x_vals = list(range(total_samples - window, total_samples))
-        p1 = data1[-window:]
-        p2 = data2[-window:]
-        p3 = data3[-window:]
-        p4 = data4[-window:]
+            if valid_samples < window_size:
+                valid_samples += 1
+    except Exception as e:
+        print(e)
+
+    x = data[0, -valid_samples:]
+    y1 = data[1, -valid_samples:]
+    y2 = data[2, -valid_samples:]
+
+    if len(x) >= smoothing_window:
+        smoothed_y1 = smooth(y1, smoothing_window)
+        smoothed_y2 = smooth(y2, smoothing_window)
+
+        x_smoothed = np.linspace(x[0], x[-1], num=len(smoothed_y1))
+
+        curves[0].setData(x_smoothed, smoothed_y1)
+        curves[1].setData(x_smoothed, smoothed_y2)
     else:
-        x_vals = list(range(total_samples))
-        p1, p2, p3, p4 = data1, data2, data3, data4
+        curves[0].setData(x, y1)
+        curves[1].setData(x, y2)
 
-    # Clear and update each subplot with custom colors
-    axs[0].cla()
-    axs[0].plot(x_vals, p1, color='red', label="Channel 1")
-    axs[0].set_ylabel("Quad phase")
-    axs[0].legend(loc="upper left")
-    
-    axs[1].cla()
-    axs[1].plot(x_vals, p2, color='green', label="Channel 2")
-    axs[1].set_ylabel("In phase")
-    axs[1].legend(loc="upper left")
-    
-    axs[2].cla()
-    axs[2].plot(x_vals, p3, color='blue', label="Channel 3")
-    axs[2].set_ylabel("BioZ")
-    axs[2].legend(loc="upper left")
-    
-    axs[3].cla()
-    axs[3].plot(x_vals, p4, color='purple', label="Channel 4")
-    axs[3].set_ylabel("Adjusted BioZ")
-    axs[3].set_xlabel("Sample Index")
-    axs[3].legend(loc="upper left")
-    
-    # Redraw the figure title if needed
-    fig.suptitle("Real-Time Sensor Data (Sliding Window)")
+# Setup timer
+timer = QtCore.QTimer()
+timer.timeout.connect(update)
+timer.start(int(sample_interval * 1000))  # 20 ms
 
-ani = animation.FuncAnimation(fig, animate, interval=50)
-plt.tight_layout(rect=[0, 0, 1, 0.95])
-plt.show()
+# Start app
+main_layout.show()
+sys.exit(app.exec_())
