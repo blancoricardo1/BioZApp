@@ -202,8 +202,8 @@ class SerialPlotter(QtWidgets.QWidget):
                 self.scatter1.setData(self.x_data, self.y1_data)
                 self.scatter2.setData(self.x_data, self.y2_data)
 
-                self.i_ohms_label.setText(f"I (Ohms): {I_ohms:.2f}")
-                self.q_ohms_label.setText(f"Q (Ohms): {Q_ohms:.2f}")
+                self.i_ohms_label.setText(f"Q (Ohms): {I_ohms:.2f}")
+                self.q_ohms_label.setText(f"I (Ohms): {Q_ohms:.2f}")
 
                 # Update x-axis range only when there is sufficient data
                 if len(self.x_data) >= 10:  # Wait until at least 10 data points are available
