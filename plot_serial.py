@@ -39,8 +39,8 @@ class SerialPlotter(QtWidgets.QWidget):
 
         # ====== Ohms Display ======
         self.ohm_label_layout = QtWidgets.QVBoxLayout()
-        self.i_ohms_label = QtWidgets.QLabel("I (Ohms): 0")
-        self.q_ohms_label = QtWidgets.QLabel("Q (Ohms): 0")
+        self.i_ohms_label = QtWidgets.QLabel("Q (Ohms): 0")
+        self.q_ohms_label = QtWidgets.QLabel("I (Ohms): 0")
         self.ohm_label_layout.addWidget(self.i_ohms_label)
         self.ohm_label_layout.addWidget(self.q_ohms_label)
         control_layout.addLayout(self.ohm_label_layout)
@@ -61,8 +61,8 @@ class SerialPlotter(QtWidgets.QWidget):
         main_layout.addLayout(slider_layout)
 
         # ====== Graphs ======
-        self.graph1 = pg.PlotWidget(title="I (Ohms) vs Time")
-        self.graph2 = pg.PlotWidget(title="Q (Ohms) vs Time")
+        self.graph1 = pg.PlotWidget(title="Q (Ohms) vs Time")
+        self.graph2 = pg.PlotWidget(title="I (Ohms) vs Time")
         self.curve1 = self.graph1.plot(pen='y')  # Line graph for I
         self.scatter1 = pg.ScatterPlotItem(brush='y', size=5)  # Scatter plot for I
         self.graph1.addItem(self.scatter1)
